@@ -1,9 +1,5 @@
-import { executeQuery, fetchAll, fetchOne } from '../config/database.js'
-import config from '../config/index.js'
+import { fetchAll, fetchOne, insertOne, updateOne, deleteOne, countDocuments } from '../config/database.js'
 import { v4 as uuidv4 } from 'uuid'
-import { executeQueryWithRetry } from '../utils/retry.js'
-
-const { catalog, schema } = config.databricks
 
 export const getAllTirths = async (req, res, next) => {
   try {
@@ -11,50 +7,39 @@ export const getAllTirths = async (req, res, next) => {
     const { page, limit, offset } = req.pagination || { page: 1, limit: 10, offset: 0 }
     const { search, sect, type, includeDetails } = req.query
 
-    let query = `SELECT * FROM ${catalog}.${schema}.tirth WHERE 1=1`
-    let countQuery = `SELECT COUNT(*) as total FROM ${catalog}.${schema}.tirth WHERE 1=1`
-    const params = []
+    let filters = {}
+    let searchQuery = null
 
     if (search) {
-      query += ` AND (tirth_name LIKE ? OR location LIKE ?)`
-      countQuery += ` AND (tirth_name LIKE ? OR location LIKE ?)`
-      const searchTerm = `%${search}%`
-      params.push(searchTerm, searchTerm)
+      searchQuery = search
     }
 
     if (sect) {
-      query += ` AND sect = ?`
-      countQuery += ` AND sect = ?`
-      params.push(sect)
+      filters.sect = sect
     }
 
     if (type) {
-      query += ` AND type = ?`
-      countQuery += ` AND type = ?`
-      params.push(type)
+      filters.type = type
     }
 
-    query += ` LIMIT ? OFFSET ?`
-    params.push(limit, offset)
+    // TODO: Implement full-text search for LIKE queries in Supabase
+    // For now, fetch data and filter in-memory if search is provided
+    const options = {
+      limit,
+      offset,
+      orderBy: 'tirth_name',
+      ascending: true,
+      select: '*'
+    }
 
-    // Execute with retry logic
-    const [tirth, countResult] = await Promise.all([
-      executeQueryWithRetry(fetchAll, query, params),
-      executeQueryWithRetry(fetchOne, countQuery, params.slice(0, -2)),
-    ])
-
-    const total = countResult?.total || 0
+    const { data: tirth, count: total } = await fetchAll('tirth_cards', filters, options)
 
     // Fetch details for all tirths if requested
     let tirthsWithDetails = tirth
     if (includeDetails === 'true' && tirth.length > 0) {
       tirthsWithDetails = await Promise.all(
         tirth.map(async (t) => {
-          const details = await executeQueryWithRetry(
-            fetchAll,
-            `SELECT * FROM ${catalog}.${schema}.tirth_detail WHERE tirth_name = ?`,
-            [t.tirth_name]
-          )
+          const { data: details } = await fetchAll('tirth_detail', { tirth_name: t.tirth_name })
           return { ...t, details: details || [] }
         })
       )
@@ -78,11 +63,7 @@ export const getTirthById = async (req, res, next) => {
   try {
     const { includeDetails } = req.query
     
-    const tirth = await executeQueryWithRetry(
-      fetchOne,
-      `SELECT * FROM ${catalog}.${schema}.tirth WHERE tirth_name = ?`,
-      [req.params.id]
-    )
+    const tirth = await fetchOne('tirth_cards', { tirth_name: req.params.id })
 
     if (!tirth) {
       return res.status(404).json({
@@ -94,11 +75,8 @@ export const getTirthById = async (req, res, next) => {
     // Fetch tirth details if requested
     let details = null
     if (includeDetails === 'true') {
-      details = await executeQueryWithRetry(
-        fetchAll,
-        `SELECT * FROM ${catalog}.${schema}.tirth_detail WHERE tirth_name = ?`,
-        [req.params.id]
-      )
+      const { data } = await fetchAll('tirth_detail', { tirth_name: req.params.id })
+      details = data
     }
 
     const responseData = includeDetails === 'true' 
@@ -128,29 +106,20 @@ export const createTirth = async (req, res, next) => {
       facilities,
     } = req.body
 
-    const query = `INSERT INTO ${catalog}.${schema}.tirth 
-      (tirth_name, location, sect, type, description, rating, timings, festivals, facilities, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP())`
-
-    const params = [
+    const newTirth = await insertOne('tirth_cards', {
       tirth_name,
-      JSON.stringify(location),
+      location: location,
       sect,
       type,
       description,
-      rating || 0,
-      JSON.stringify(timings || []),
-      JSON.stringify(festivals || []),
-      JSON.stringify(facilities || []),
-    ]
+      rating: rating || 0,
+      timings: timings || [],
+      festivals: festivals || [],
+      facilities: facilities || [],
+      created_at: new Date(),
+    })
 
-    await executeQueryWithRetry(executeQuery, query, params)
-
-    const tirth = await executeQueryWithRetry(
-      fetchOne,
-      `SELECT * FROM ${catalog}.${schema}.tirth WHERE tirth_name = ?`,
-      [tirth_name]
-    )
+    const tirth = await fetchOne('tirth_cards', { tirth_name })
 
     res.status(201).json({
       success: true,
@@ -166,32 +135,18 @@ export const updateTirth = async (req, res, next) => {
     const { id } = req.params
     const updates = req.body
 
-    // Build dynamic UPDATE query
-    const setClauses = []
-    const params = []
-
+    // Prepare update object (exclude tirth_name and created_at)
+    const updateData = {}
     for (const [key, value] of Object.entries(updates)) {
       if (key !== 'tirth_name' && key !== 'created_at') {
-        setClauses.push(`${key} = ?`)
-        params.push(
-          typeof value === 'object' ? JSON.stringify(value) : value
-        )
+        updateData[key] = value
       }
     }
+    updateData.updated_at = new Date()
 
-    params.push(id)
+    await updateOne('tirth_cards', { tirth_name: id }, updateData)
 
-    const query = `UPDATE ${catalog}.${schema}.tirth SET ${setClauses.join(
-      ', '
-    )}, updated_at = CURRENT_TIMESTAMP() WHERE tirth_name = ?`
-
-    await executeQueryWithRetry(executeQuery, query, params)
-
-    const tirth = await executeQueryWithRetry(
-      fetchOne,
-      `SELECT * FROM ${catalog}.${schema}.tirth WHERE tirth_name = ?`,
-      [id]
-    )
+    const tirth = await fetchOne('tirth_cards', { tirth_name: id })
 
     if (!tirth) {
       return res.status(404).json({
@@ -214,11 +169,7 @@ export const deleteTirth = async (req, res, next) => {
     const { id } = req.params
 
     // Check if exists
-    const tirth = await executeQueryWithRetry(
-      fetchOne,
-      `SELECT * FROM ${catalog}.${schema}.tirth WHERE tirth_name = ?`,
-      [id]
-    )
+    const tirth = await fetchOne('tirth_cards', { tirth_name: id })
 
     if (!tirth) {
       return res.status(404).json({
@@ -227,11 +178,7 @@ export const deleteTirth = async (req, res, next) => {
       })
     }
 
-    await executeQueryWithRetry(
-      executeQuery,
-      `DELETE FROM ${catalog}.${schema}.tirth WHERE tirth_name = ?`,
-      [id]
-    )
+    await deleteOne('tirth_cards', { tirth_name: id })
 
     res.json({
       success: true,

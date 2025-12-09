@@ -15,12 +15,12 @@
     "pilgrimage",
     "tirth",
     "api",
-    "databricks"
+    "supabase"
   ],
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "@databricks/sql": "^1.2.0",
+    "@supabase/supabase-js": "^2.87.1",
     "axios": "^1.4.0",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",

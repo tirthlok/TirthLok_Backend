@@ -11,13 +11,11 @@ export const config = {
   nodeEnv: process.env.NODE_ENV || 'development',
   isDevelopment: process.env.NODE_ENV !== 'production',
 
-  // Databricks Configuration
-  databricks: {
-    host: process.env.DATABRICKS_HOST || 'your-workspace.cloud.databricks.com',
-    path: process.env.DATABRICKS_SQL_WAREHOUSE_PATH || '/sql/1.0/warehouses/your_warehouse_id',
-    token: process.env.DATABRICKS_TOKEN || '',
-    catalog: process.env.DATABRICKS_CATALOG || 'main',
-    schema: process.env.DATABRICKS_SCHEMA || 'tirthlok',
+  // Supabase Configuration
+  supabase: {
+    url: process.env.SUPABASE_URL || 'https://cfmvkvpyjvbcenqorifa.supabase.co',
+    anonKey: process.env.SUPABASE_ANON_KEY || '',
+    serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
   },
 
   // JWT

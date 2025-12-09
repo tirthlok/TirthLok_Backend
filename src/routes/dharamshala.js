@@ -1,35 +1,20 @@
-import { executeQuery, fetchAll, fetchOne } from '../config/database.js'
-import config from '../config/index.js'
+import { fetchAll, fetchOne, insertOne, updateOne, deleteOne } from '../config/database.js'
 import { v4 as uuidv4 } from 'uuid'
-import { executeQueryWithRetry } from '../utils/retry.js'
-
-const { catalog, schema } = config.databricks
 
 export const getAllDharamshalas = async (req, res, next) => {
   try {
     const { page, limit, offset } = req.pagination || { page: 1, limit: 10, offset: 0 }
     const { search } = req.query
 
-    let query = `SELECT * FROM ${catalog}.${schema}.dharamshalas WHERE 1=1`
-    let countQuery = `SELECT COUNT(*) as total FROM ${catalog}.${schema}.dharamshalas WHERE 1=1`
-    const params = []
-
-    if (search) {
-      query += ` AND (name LIKE ? OR location LIKE ?)`
-      countQuery += ` AND (name LIKE ? OR location LIKE ?)`
-      const searchTerm = `%${search}%`
-      params.push(searchTerm, searchTerm)
+    const filters = {}
+    const options = {
+      limit,
+      offset,
+      orderBy: 'name',
+      ascending: true,
     }
 
-    query += ` LIMIT ? OFFSET ?`
-    params.push(limit, offset)
-
-    const [dharamshalas, countResult] = await Promise.all([
-      executeQueryWithRetry(fetchAll, query, params),
-      executeQueryWithRetry(fetchOne, countQuery, params.slice(0, -2)),
-    ])
-
-    const total = countResult?.total || 0
+    const { data: dharamshalas, count: total } = await fetchAll('dharamshalas', filters, options)
 
     res.json({
       success: true,
@@ -47,10 +32,7 @@ export const getAllDharamshalas = async (req, res, next) => {
 
 export const getDharamshalaById = async (req, res, next) => {
   try {
-    const dharamshala = await fetchOne(
-      `SELECT * FROM ${catalog}.${schema}.dharamshalas WHERE id = ?`,
-      [req.params.id]
-    )
+    const dharamshala = await fetchOne('dharamshalas', { id: req.params.id })
 
     if (!dharamshala) {
       return res.status(404).json({
@@ -73,26 +55,18 @@ export const createDharamshala = async (req, res, next) => {
     const { name, location, facilities, rating, checkInTime, checkOutTime } = req.body
 
     const id = uuidv4()
-    const query = `INSERT INTO ${catalog}.${schema}.dharamshalas 
-      (id, name, location, facilities, rating, check_in_time, check_out_time, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP())`
-
-    const params = [
+    const newDharamshala = await insertOne('dharamshalas', {
       id,
       name,
-      JSON.stringify(location),
-      JSON.stringify(facilities || []),
-      rating || 0,
-      checkInTime,
-      checkOutTime,
-    ]
+      location: location,
+      facilities: facilities || [],
+      rating: rating || 0,
+      check_in_time: checkInTime,
+      check_out_time: checkOutTime,
+      created_at: new Date(),
+    })
 
-    await executeQuery(query, params)
-
-    const dharamshala = await fetchOne(
-      `SELECT * FROM ${catalog}.${schema}.dharamshalas WHERE id = ?`,
-      [id]
-    )
+    const dharamshala = await fetchOne('dharamshalas', { id })
 
     res.status(201).json({
       success: true,
@@ -108,30 +82,17 @@ export const updateDharamshala = async (req, res, next) => {
     const { id } = req.params
     const updates = req.body
 
-    const setClauses = []
-    const params = []
-
+    const updateData = {}
     for (const [key, value] of Object.entries(updates)) {
       if (key !== 'id' && key !== 'created_at') {
-        setClauses.push(`${key} = ?`)
-        params.push(
-          typeof value === 'object' ? JSON.stringify(value) : value
-        )
+        updateData[key] = value
       }
     }
+    updateData.updated_at = new Date()
 
-    params.push(id)
+    await updateOne('dharamshalas', { id }, updateData)
 
-    const query = `UPDATE ${catalog}.${schema}.dharamshalas SET ${setClauses.join(
-      ', '
-    )}, updated_at = CURRENT_TIMESTAMP() WHERE id = ?`
-
-    await executeQuery(query, params)
-
-    const dharamshala = await fetchOne(
-      `SELECT * FROM ${catalog}.${schema}.dharamshalas WHERE id = ?`,
-      [id]
-    )
+    const dharamshala = await fetchOne('dharamshalas', { id })
 
     if (!dharamshala) {
       return res.status(404).json({
@@ -153,10 +114,7 @@ export const deleteDharamshala = async (req, res, next) => {
   try {
     const { id } = req.params
 
-    const dharamshala = await fetchOne(
-      `SELECT * FROM ${catalog}.${schema}.dharamshalas WHERE id = ?`,
-      [id]
-    )
+    const dharamshala = await fetchOne('dharamshalas', { id })
 
     if (!dharamshala) {
       return res.status(404).json({
@@ -165,10 +123,7 @@ export const deleteDharamshala = async (req, res, next) => {
       })
     }
 
-    await executeQuery(
-      `DELETE FROM ${catalog}.${schema}.dharamshalas WHERE id = ?`,
-      [id]
-    )
+    await deleteOne('dharamshalas', { id })
 
     res.json({
       success: true,
@@ -183,10 +138,7 @@ export const getDharamshalaRooms = async (req, res, next) => {
   try {
     const { id } = req.params
 
-    const dharamshala = await fetchOne(
-      `SELECT * FROM ${catalog}.${schema}.dharamshalas WHERE id = ?`,
-      [id]
-    )
+    const dharamshala = await fetchOne('dharamshalas', { id })
 
     if (!dharamshala) {
       return res.status(404).json({
@@ -195,10 +147,7 @@ export const getDharamshalaRooms = async (req, res, next) => {
       })
     }
 
-    const rooms = await fetchAll(
-      `SELECT * FROM ${catalog}.${schema}.rooms WHERE dharamshala_id = ?`,
-      [id]
-    )
+    const { data: rooms } = await fetchAll('rooms', { dharamshala_id: id })
 
     res.json({
       success: true,

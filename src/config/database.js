@@ -1,10 +1,10 @@
-import * as databricks from './databricks.js'
+import * as supabase from './supabase.js'
 import config from './index.js'
 
 export const connectDB = async () => {
   try {
-    await databricks.connectDatabricks()
-    console.log(`✓ Databricks Database Connected`)
+    await supabase.connectSupabase()
+    console.log(`✓ Supabase Database Connected`)
     return true
   } catch (error) {
     console.error(`✗ Database connection failed: ${error.message}`)
@@ -13,17 +13,42 @@ export const connectDB = async () => {
 }
 
 export const disconnectDB = async () => {
-  await databricks.disconnectDatabricks()
+  await supabase.disconnectSupabase()
 }
 
-export const executeQuery = async (sql, params = []) => {
-  return databricks.executeQuery(sql, params)
+export const fetchAll = async (table, filters = {}, options = {}) => {
+  return supabase.fetchAll(table, filters, options)
 }
 
-export const fetchOne = async (sql, params = []) => {
-  return databricks.fetchOne(sql, params)
+export const fetchOne = async (table, filters = {}, options = {}) => {
+  return supabase.fetchOne(table, filters, options)
 }
 
-export const fetchAll = async (sql, params = []) => {
-  return databricks.fetchAll(sql, params)
+export const insertOne = async (table, data) => {
+  return supabase.insertOne(table, data)
 }
+
+export const insertMany = async (table, dataArray) => {
+  return supabase.insertMany(table, dataArray)
+}
+
+export const updateOne = async (table, filters = {}, updateData = {}) => {
+  return supabase.updateOne(table, filters, updateData)
+}
+
+export const updateMany = async (table, filters = {}, updateData = {}) => {
+  return supabase.updateMany(table, filters, updateData)
+}
+
+export const deleteOne = async (table, filters = {}) => {
+  return supabase.deleteOne(table, filters)
+}
+
+export const countDocuments = async (table, filters = {}) => {
+  return supabase.countDocuments(table, filters)
+}
+
+export const executeRawQuery = async (sql) => {
+  return supabase.executeRawQuery(sql)
+}
+

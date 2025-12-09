@@ -2,10 +2,8 @@
  * Database health check and column validation utilities
  */
 
-import { fetchOne, fetchAll, executeQuery } from '../config/database.js'
-import config from '../config/index.js'
-
-const { catalog, schema } = config.databricks
+import { fetchOne, fetchAll, countDocuments } from '../config/database.js'
+import { getSupabaseClient } from '../config/supabase.js'
 
 /**
  * Check database connection health
@@ -15,8 +13,8 @@ export const checkDatabaseHealth = async () => {
   try {
     const startTime = Date.now()
     
-    // Test simple query
-    const result = await fetchOne('SELECT 1 as ping')
+    // Test connection by fetching count from users table
+    const count = await countDocuments('users', {})
     const responseTime = Date.now() - startTime
     
     return {
@@ -36,22 +34,25 @@ export const checkDatabaseHealth = async () => {
 }
 
 /**
- * Get table metadata (columns and their types)
+ * Get table metadata from Supabase
  * @param {string} tableName - Table name
  * @returns {Promise<Array>} Array of column info
  */
 export const getTableColumns = async (tableName) => {
   try {
-    // Databricks DESCRIBE command
-    const result = await fetchAll(
-      `DESCRIBE ${catalog}.${schema}.${tableName}`
-    )
+    const client = getSupabaseClient()
     
-    return result.map(row => ({
-      name: row.col_name,
-      type: row.data_type,
-      nullable: row.comment ? !row.comment.includes('NOT NULL') : true,
-    }))
+    // Fetch table schema information from information_schema
+    const { data, error } = await client.rpc('get_table_columns', {
+      table_name: tableName,
+    })
+    
+    if (error) {
+      console.error(`Failed to get columns for ${tableName}:`, error.message)
+      return null
+    }
+    
+    return data
   } catch (error) {
     console.error(`Failed to get columns for ${tableName}:`, error.message)
     return null
@@ -75,7 +76,7 @@ export const validateTableColumns = async (tableName, requiredColumns) => {
     }
   }
   
-  const columnNames = columns.map(col => col.name)
+  const columnNames = columns.map(col => col.column_name)
   const missing = requiredColumns.filter(col => !columnNames.includes(col))
   
   return {
@@ -93,13 +94,13 @@ export const validateTableColumns = async (tableName, requiredColumns) => {
  */
 export const tableExists = async (tableName) => {
   try {
-    await fetchOne(`SELECT 1 FROM ${catalog}.${schema}.${tableName} LIMIT 1`)
+    await fetchOne(tableName, {})
     return true
   } catch (error) {
     if (error.message && error.message.includes('not found')) {
       return false
     }
-    throw error
+    return false // If any error occurs, assume table doesn't exist
   }
 }
 
@@ -110,10 +111,10 @@ export const tableExists = async (tableName) => {
 export const getDatabaseStats = async () => {
   try {
     const tables = [
-      'tirth',
+      'tirth_cards',
       'users',
       'dharamshalas',
-      'bhojanshals',
+      'bhojanshalas',
       'bookings',
       'favorites',
     ]
@@ -124,10 +125,8 @@ export const getDatabaseStats = async () => {
       try {
         const exists = await tableExists(table)
         if (exists) {
-          const result = await fetchOne(
-            `SELECT COUNT(*) as count FROM ${catalog}.${schema}.${table}`
-          )
-          stats[table] = result?.count || 0
+          const count = await countDocuments(table, {})
+          stats[table] = count || 0
         }
       } catch {
         stats[table] = 'error'
@@ -135,8 +134,7 @@ export const getDatabaseStats = async () => {
     }
     
     return {
-      catalog,
-      schema,
+      database: 'supabase',
       tables: stats,
       timestamp: new Date().toISOString(),
     }
@@ -165,11 +163,11 @@ export const validateColumnType = (value, type) => {
     return typeof value === 'number' && Number.isInteger(value)
   }
   
-  if (typeUpper.includes('STRING') || typeUpper.includes('VARCHAR')) {
+  if (typeUpper.includes('TEXT') || typeUpper.includes('VARCHAR')) {
     return typeof value === 'string'
   }
   
-  if (typeUpper.includes('DOUBLE') || typeUpper.includes('FLOAT')) {
+  if (typeUpper.includes('NUMERIC') || typeUpper.includes('FLOAT')) {
     return typeof value === 'number'
   }
   
@@ -181,8 +179,8 @@ export const validateColumnType = (value, type) => {
     return value instanceof Date || typeof value === 'string'
   }
   
-  if (typeUpper.includes('ARRAY')) {
-    return Array.isArray(value)
+  if (typeUpper.includes('JSONB') || typeUpper.includes('JSON')) {
+    return typeof value === 'object' || typeof value === 'string'
   }
   
   return true // Unknown type, skip validation

@@ -1,23 +1,16 @@
 import jwt from 'jsonwebtoken'
 import bcryptjs from 'bcryptjs'
 import config from '../config/index.js'
-import { executeQuery, fetchOne } from '../config/database.js'
+import { insertOne, fetchOne, fetchAll, updateOne, deleteOne } from '../config/database.js'
 import { v4 as uuidv4 } from 'uuid'
 import { blacklistToken } from '../utils/tokenBlacklist.js'
-import { executeQueryWithRetry } from '../utils/retry.js'
-
-const { catalog, schema } = config.databricks
 
 export const register = async (req, res, next) => {
   try {
     const { email, name, password } = req.body
 
     // Check if user already exists
-    const existingUser = await executeQueryWithRetry(
-      fetchOne,
-      `SELECT id FROM ${catalog}.${schema}.users WHERE email = ?`,
-      [email]
-    )
+    const existingUser = await fetchOne('users', { email })
 
     if (existingUser) {
       return res.status(409).json({
@@ -31,18 +24,16 @@ export const register = async (req, res, next) => {
     const id = uuidv4()
 
     // Create new user
-    await executeQueryWithRetry(
-      executeQuery,
-      `INSERT INTO ${catalog}.${schema}.users (id, email, name, password_hash, is_admin, created_at)
-       VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP())`,
-      [id, email, name, passwordHash, false]
-    )
+    await insertOne('users', {
+      id,
+      email,
+      name,
+      password_hash: passwordHash,
+      is_admin: false,
+      created_at: new Date(),
+    })
 
-    const user = await executeQueryWithRetry(
-      fetchOne,
-      `SELECT id, email, name, is_admin FROM ${catalog}.${schema}.users WHERE id = ?`,
-      [id]
-    )
+    const user = await fetchOne('users', { id }, { select: 'id, email, name, is_admin' })
 
     // Generate token
     const token = jwt.sign(
@@ -80,11 +71,7 @@ export const login = async (req, res, next) => {
     }
 
     // Find user with password
-    const user = await executeQueryWithRetry(
-      fetchOne,
-      `SELECT * FROM ${catalog}.${schema}.users WHERE email = ?`,
-      [email]
-    )
+    const user = await fetchOne('users', { email })
 
     if (!user) {
       return res.status(401).json({
@@ -129,11 +116,7 @@ export const login = async (req, res, next) => {
 
 export const getProfile = async (req, res, next) => {
   try {
-    const user = await executeQueryWithRetry(
-      fetchOne,
-      `SELECT id, email, name, is_admin, sect FROM ${catalog}.${schema}.users WHERE id = ?`,
-      [req.user.id]
-    )
+    const user = await fetchOne('users', { id: req.user.id }, { select: 'id, email, name, is_admin, sect' })
 
     if (!user) {
       return res.status(404).json({
@@ -162,18 +145,9 @@ export const updateProfile = async (req, res, next) => {
     const { name, sect } = req.body
     const userId = req.user.id
 
-    await executeQueryWithRetry(
-      executeQuery,
-      `UPDATE ${catalog}.${schema}.users SET name = ?, sect = ?, updated_at = CURRENT_TIMESTAMP()
-       WHERE id = ?`,
-      [name, sect, userId]
-    )
+    await updateOne('users', { id: userId }, { name, sect, updated_at: new Date() })
 
-    const user = await executeQueryWithRetry(
-      fetchOne,
-      `SELECT id, email, name, is_admin, sect FROM ${catalog}.${schema}.users WHERE id = ?`,
-      [userId]
-    )
+    const user = await fetchOne('users', { id: userId }, { select: 'id, email, name, is_admin, sect' })
 
     if (!user) {
       return res.status(404).json({
@@ -238,16 +212,15 @@ export const addFavorite = async (req, res, next) => {
     const userId = req.user.id
 
     const id = uuidv4()
-    await executeQuery(
-      `INSERT INTO ${catalog}.${schema}.favorites (id, user_id, entity_id, entity_type, created_at)
-       VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP())`,
-      [id, userId, entityId, entityType]
-    )
+    await insertOne('favorites', {
+      id,
+      user_id: userId,
+      entity_id: entityId,
+      entity_type: entityType,
+      created_at: new Date(),
+    })
 
-    const favorites = await fetchOne(
-      `SELECT * FROM ${catalog}.${schema}.favorites WHERE user_id = ?`,
-      [userId]
-    )
+    const { data: favorites } = await fetchAll('favorites', { user_id: userId })
 
     res.json({
       success: true,
@@ -263,15 +236,9 @@ export const removeFavorite = async (req, res, next) => {
     const { entityId } = req.params
     const userId = req.user.id
 
-    await executeQuery(
-      `DELETE FROM ${catalog}.${schema}.favorites WHERE user_id = ? AND entity_id = ?`,
-      [userId, entityId]
-    )
+    await deleteOne('favorites', { user_id: userId, entity_id: entityId })
 
-    const favorites = await fetchOne(
-      `SELECT * FROM ${catalog}.${schema}.favorites WHERE user_id = ?`,
-      [userId]
-    )
+    const { data: favorites } = await fetchAll('favorites', { user_id: userId })
 
     res.json({
       success: true,
@@ -286,12 +253,9 @@ export const getFavorites = async (req, res, next) => {
   try {
     const userId = req.user.id
 
-    const favorites = await fetchOne(
-      `SELECT * FROM ${catalog}.${schema}.favorites WHERE user_id = ?`,
-      [userId]
-    )
+    const { data: favorites } = await fetchAll('favorites', { user_id: userId })
 
-    if (!favorites) {
+    if (!favorites || favorites.length === 0) {
       return res.json({
         success: true,
         data: [],
