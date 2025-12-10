@@ -34,12 +34,12 @@ export const getAllTirths = async (req, res, next) => {
 
     const { data: tirth, count: total } = await fetchAll('tirth_cards', filters, options)
 
-    // Fetch details for all tirths if requested
+    // Fetch details for all tirths by default
     let tirthsWithDetails = tirth
-    if (includeDetails === 'true' && tirth.length > 0) {
+    if (tirth.length > 0) {
       tirthsWithDetails = await Promise.all(
         tirth.map(async (t) => {
-          const { data: details } = await fetchAll('tirth_detail', { tirth_name: t.tirth_name })
+          const { data: details } = await fetchAll('tirth_details', { tirth_name: t.tirth_name }, {}, true)
           return { ...t, details: details || [] }
         })
       )
@@ -72,21 +72,17 @@ export const getTirthById = async (req, res, next) => {
       })
     }
 
-    // Fetch tirth details if requested using admin client
-    let details = null
-    if (includeDetails === 'true') {
-      try {
-        const { data } = await fetchAll('tirth_details', { tirth_name: req.params.id }, {}, true)
-        details = data
-      } catch (error) {
-        console.error(`Error fetching tirth_details: ${error.message}`)
-        details = []
-      }
+    // Fetch tirth details using admin client
+    let details = []
+    try {
+      const { data } = await fetchAll('tirth_details', { tirth_name: req.params.id }, {}, true)
+      details = data || []
+    } catch (error) {
+      console.error(`Error fetching tirth_details: ${error.message}`)
+      details = []
     }
 
-    const responseData = includeDetails === 'true' 
-      ? { ...tirth, details: details || [] }
-      : tirth
+    const responseData = { ...tirth, details }
 
     res.json({
       success: true,
