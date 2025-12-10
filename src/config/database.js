@@ -16,8 +16,8 @@ export const disconnectDB = async () => {
   await supabase.disconnectSupabase()
 }
 
-export const fetchAll = async (table, filters = {}, options = {}) => {
-  return supabase.fetchAll(table, filters, options)
+export const fetchAll = async (table, filters = {}, options = {}, useAdmin = false) => {
+  return supabase.fetchAll(table, filters, options, useAdmin)
 }
 
 export const fetchOne = async (table, filters = {}, options = {}) => {

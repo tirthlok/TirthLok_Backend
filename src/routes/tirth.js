@@ -72,11 +72,16 @@ export const getTirthById = async (req, res, next) => {
       })
     }
 
-    // Fetch tirth details if requested
+    // Fetch tirth details if requested using admin client
     let details = null
     if (includeDetails === 'true') {
-      const { data } = await fetchAll('tirth_detail', { tirth_name: req.params.id })
-      details = data
+      try {
+        const { data } = await fetchAll('tirth_details', { tirth_name: req.params.id }, {}, true)
+        details = data
+      } catch (error) {
+        console.error(`Error fetching tirth_details: ${error.message}`)
+        details = []
+      }
     }
 
     const responseData = includeDetails === 'true' 
@@ -86,6 +91,32 @@ export const getTirthById = async (req, res, next) => {
     res.json({
       success: true,
       data: responseData,
+    })
+  } catch (error) {
+    next(error)
+  }
+}
+
+/**
+ * Get Tirth Details
+ */
+export const getTirthDetails = async (req, res, next) => {
+  try {
+    const { tirth_name } = req.query
+    
+    if (!tirth_name) {
+      return res.status(400).json({
+        success: false,
+        error: 'tirth_name parameter is required',
+      })
+    }
+
+    // Use admin client (useAdmin = true) to bypass RLS
+    const { data: details } = await fetchAll('tirth_details', { tirth_name }, {}, true)
+    
+    res.json({
+      success: true,
+      data: details || [],
     })
   } catch (error) {
     next(error)

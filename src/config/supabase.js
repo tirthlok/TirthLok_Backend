@@ -2,9 +2,10 @@ import { createClient } from '@supabase/supabase-js'
 import config from './index.js'
 
 let supabaseClient = null
+let supabaseAdminClient = null
 
 /**
- * Initialize Supabase client
+ * Initialize Supabase client (anon key)
  */
 export const initSupabase = () => {
   if (!supabaseClient) {
@@ -17,6 +18,22 @@ export const initSupabase = () => {
 }
 
 /**
+ * Initialize Supabase admin client (service role key)
+ */
+export const initSupabaseAdmin = () => {
+  if (!supabaseAdminClient) {
+    if (!config.supabase.serviceRoleKey) {
+      throw new Error('Service role key not configured in environment')
+    }
+    supabaseAdminClient = createClient(
+      config.supabase.url,
+      config.supabase.serviceRoleKey
+    )
+  }
+  return supabaseAdminClient
+}
+
+/**
  * Get Supabase client instance
  */
 export const getSupabaseClient = () => {
@@ -24,6 +41,16 @@ export const getSupabaseClient = () => {
     throw new Error('Supabase client not initialized. Call initSupabase() first.')
   }
   return supabaseClient
+}
+
+/**
+ * Get Supabase admin client instance
+ */
+export const getSupabaseAdminClient = () => {
+  if (!supabaseAdminClient) {
+    throw new Error('Supabase admin client not initialized. Call initSupabaseAdmin() first.')
+  }
+  return supabaseAdminClient
 }
 
 /**
@@ -45,10 +72,12 @@ export const connectSupabase = async () => {
       throw error
     }
     
-    console.log('✅ Supabase Connected')
+    // Initialize admin client
+    const adminClient = initSupabaseAdmin()
+    console.log('✅ Supabase Connected (Anonymous & Admin)')
     console.log(`   Project: ${config.supabase.url}`)
     
-    return client
+    return { client, adminClient }
   } catch (error) {
     console.error(`❌ Supabase connection failed: ${error.message}`)
     throw error
@@ -95,12 +124,12 @@ export const executeRawQuery = async (sql) => {
 /**
  * Execute a SELECT query
  */
-export const fetchAll = async (table, filters = {}, options = {}) => {
+export const fetchAll = async (table, filters = {}, options = {}, useAdmin = false) => {
   try {
-    const client = getSupabaseClient()
+    const client = useAdmin ? getSupabaseAdminClient() : getSupabaseClient()
     const { limit = null, offset = 0, orderBy = null, ascending = true, select = '*' } = options
 
-    console.log(`📊 Fetching from schema: tirthlok, table: ${table}`)
+    console.log(`📊 Fetching from schema: tirthlok, table: ${table} ${useAdmin ? '(ADMIN)' : '(ANON)'}`)
     console.log(`🔍 Filters:`, JSON.stringify(filters))
     console.log(`⚙️ Options:`, JSON.stringify(options))
 
