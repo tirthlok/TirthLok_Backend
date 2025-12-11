@@ -1,6 +1,21 @@
 import { fetchAll, fetchOne, insertOne, updateOne, deleteOne, countDocuments } from '../config/database.js'
 import { v4 as uuidv4 } from 'uuid'
 
+/**
+ * Normalize and parse tirth data
+ */
+const normalizeTirthData = (tirth) => {
+  if (!tirth) return null
+
+  return {
+    ...tirth,
+    // Parse tirth_images if it's a string
+    tirth_images: typeof tirth.tirth_images === 'string' && tirth.tirth_images.includes('http') ?
+      tirth.tirth_images.split(',').map(img => img.trim().replace(/[()'"]/g, '')) :
+      Array.isArray(tirth.tirth_images) ? tirth.tirth_images : []
+  }
+}
+
 export const getAllTirths = async (req, res, next) => {
   try {
     // Use pagination from middleware validation
@@ -15,7 +30,7 @@ export const getAllTirths = async (req, res, next) => {
     }
 
     if (sect) {
-      filters.sect = sect
+      filters.tirth_sect = sect
     }
 
     if (type) {
@@ -34,15 +49,27 @@ export const getAllTirths = async (req, res, next) => {
 
     const { data: tirth, count: total } = await fetchAll('tirth_cards', filters, options)
 
-    // Fetch details for all tirths by default
+    // Fetch all details in a single query instead of per-tirth queries for better performance
     let tirthsWithDetails = tirth
     if (tirth.length > 0) {
-      tirthsWithDetails = await Promise.all(
-        tirth.map(async (t) => {
-          const { data: details } = await fetchAll('tirth_details', { tirth_name: t.tirth_name }, {}, true)
-          return { ...t, details: details || [] }
+      const tirthNames = tirth.map(t => t.tirth_name)
+      const { data: allDetails } = await fetchAll('tirth_details', {}, {}, true)
+      
+      // Create a map of details indexed by tirth_name for O(1) lookup
+      const detailsMap = {}
+      if (allDetails) {
+        allDetails.forEach(detail => {
+          if (!detailsMap[detail.tirth_name]) {
+            detailsMap[detail.tirth_name] = detail
+          }
         })
-      )
+      }
+      
+      // Merge details into tirths
+      tirthsWithDetails = tirth.map(t => {
+        const merged = detailsMap[t.tirth_name] ? { ...t, ...detailsMap[t.tirth_name] } : t
+        return normalizeTirthData(merged)
+      })
     }
 
     res.json({
@@ -82,7 +109,8 @@ export const getTirthById = async (req, res, next) => {
       details = []
     }
 
-    const responseData = { ...tirth, details }
+    const merged = details.length > 0 ? { ...tirth, ...details[0] } : tirth
+    const responseData = normalizeTirthData(merged)
 
     res.json({
       success: true,
@@ -135,7 +163,7 @@ export const createTirth = async (req, res, next) => {
 
     const newTirth = await insertOne('tirth_cards', {
       tirth_name,
-      location: location,
+      location,
       sect,
       type,
       description,
@@ -146,11 +174,9 @@ export const createTirth = async (req, res, next) => {
       created_at: new Date(),
     })
 
-    const tirth = await fetchOne('tirth_cards', { tirth_name })
-
     res.status(201).json({
       success: true,
-      data: tirth,
+      data: newTirth,
     })
   } catch (error) {
     next(error)
@@ -165,14 +191,24 @@ export const updateTirth = async (req, res, next) => {
     // Prepare update object (exclude tirth_name and created_at)
     const updateData = {}
     for (const [key, value] of Object.entries(updates)) {
-      if (key !== 'tirth_name' && key !== 'created_at') {
+      if (key !== 'tirth_name' && key !== 'created_at' && value !== undefined) {
         updateData[key] = value
       }
     }
+    
+    // Only update if there are changes
+    if (Object.keys(updateData).length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'No valid fields to update',
+      })
+    }
+    
     updateData.updated_at = new Date()
 
     await updateOne('tirth_cards', { tirth_name: id }, updateData)
 
+    // Fetch updated record only if update succeeded
     const tirth = await fetchOne('tirth_cards', { tirth_name: id })
 
     if (!tirth) {
