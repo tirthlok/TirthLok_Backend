@@ -28,6 +28,13 @@ const inspectTableData = async () => {
     if (data.length > 0) {
       const columns = Object.keys(data[0])
       console.log('📋 Columns:', columns)
+      console.log('  - event_id')
+      console.log('  - tirth_name')
+      console.log('  - created_dt')
+      console.log('  - tithi (lunar calendar date)')
+      console.log('  - time_frame (gregorian calendar date range)')
+      console.log('  - event_description')
+      console.log('  - event_details')
       console.log('')
     }
 
