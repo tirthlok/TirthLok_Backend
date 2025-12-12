@@ -80,6 +80,7 @@ export const createApp = () => {
 
   // ===== TIRTH ROUTES =====
   app.get('/api/v1/tirth/details', tirtController.getTirthDetails)
+  app.get('/api/v1/tirth/festivals-and-events', tirtController.getTirthFestivalsAndEvents)
   app.get('/api/v1/tirth', sanitizeSearchInput, validatePaginationMiddleware, tirtController.getAllTirths)
   app.get('/api/v1/tirth/:id', tirtController.getTirthById)
   app.post('/api/v1/tirth', authMiddleware, adminMiddleware, validateTirthInput, tirtController.createTirth)

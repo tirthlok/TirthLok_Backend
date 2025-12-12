@@ -227,6 +227,32 @@ export const updateTirth = async (req, res, next) => {
   }
 }
 
+/**
+ * Get Festivals and Events for a Tirth
+ */
+export const getTirthFestivalsAndEvents = async (req, res, next) => {
+  try {
+    const { tirth_name } = req.query
+
+    if (!tirth_name) {
+      return res.status(400).json({
+        success: false,
+        error: 'tirth_name parameter is required',
+      })
+    }
+
+    // Use admin client (useAdmin = true) to bypass RLS
+    const { data: festivalsAndEvents } = await fetchAll('tirth_festivals_and_events', { tirth_name }, {}, true)
+
+    res.json({
+      success: true,
+      data: festivalsAndEvents || [],
+    })
+  } catch (error) {
+    next(error)
+  }
+}
+
 export const deleteTirth = async (req, res, next) => {
   try {
     const { id } = req.params
