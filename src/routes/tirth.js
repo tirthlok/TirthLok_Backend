@@ -159,6 +159,8 @@ export const createTirth = async (req, res, next) => {
       timings,
       festivals,
       facilities,
+      tirth_tags,
+      tirth_grouping,
     } = req.body
 
     const newTirth = await insertOne('tirth_cards', {
@@ -171,6 +173,8 @@ export const createTirth = async (req, res, next) => {
       timings: timings || [],
       festivals: festivals || [],
       facilities: facilities || [],
+      tirth_tags: tirth_tags || null,
+      tirth_grouping: tirth_grouping || null,
       created_at: new Date(),
     })
 

@@ -37,7 +37,7 @@ export const validatePaginationMiddleware = (req, res, next) => {
  * Validate Tirth creation/update request
  */
 export const validateTirthInput = (req, res, next) => {
-  const { name, location, sect, type, description, rating } = req.body
+  const { name, location, sect, type, description, rating, tirth_tags, tirth_grouping } = req.body
   const errors = []
   
   // Required fields
@@ -65,6 +65,20 @@ export const validateTirthInput = (req, res, next) => {
   if (rating !== undefined) {
     if (!validators.isValidNonNegativeNumber(rating) || rating > 5) {
       errors.push('Rating must be a number between 0-5')
+    }
+  }
+
+  // Validate optional tirth_tags (can be string or array)
+  if (tirth_tags !== undefined && tirth_tags !== null) {
+    if (typeof tirth_tags !== 'string' && !Array.isArray(tirth_tags)) {
+      errors.push('tirth_tags must be a string or array')
+    }
+  }
+
+  // Validate optional tirth_grouping
+  if (tirth_grouping !== undefined && tirth_grouping !== null) {
+    if (!validators.isValidString(tirth_grouping, 1, 200)) {
+      errors.push('tirth_grouping must be a string between 1-200 characters')
     }
   }
   
